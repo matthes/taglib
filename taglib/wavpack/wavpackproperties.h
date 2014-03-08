@@ -75,13 +75,19 @@ namespace TagLib {
 
       virtual int length() const;
       virtual int bitrate() const;
+
+      /*!
+       * Returns the sample rate in Hz. 0 means unknown or custom.
+       */
       virtual int sampleRate() const;
+      
       virtual int channels() const;
 
       /*!
        * Returns number of bits per sample.
        */
       int bitsPerSample() const;
+      uint sampleFrames() const;
 
       /*!
        * Returns WavPack version.

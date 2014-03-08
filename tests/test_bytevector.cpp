@@ -22,9 +22,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <cppunit/extensions/HelperMacros.h>
 #include <tbytevector.h>
 #include <tbytevectorlist.h>
+#include <cppunit/extensions/HelperMacros.h>
 
 using namespace std;
 using namespace TagLib;
@@ -39,6 +39,7 @@ class TestByteVector : public CppUnit::TestFixture
   CPPUNIT_TEST(testRfind2);
   CPPUNIT_TEST(testToHex);
   CPPUNIT_TEST(testToUShort);
+  CPPUNIT_TEST(testReplace);
   CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -111,12 +112,17 @@ public:
     ByteVector s2("f");
     CPPUNIT_ASSERT(ByteVectorList::split(s2, " ").size() == 1);
 
-
     CPPUNIT_ASSERT(ByteVector().size() == 0);
     CPPUNIT_ASSERT(ByteVector("asdf").clear().size() == 0);
     CPPUNIT_ASSERT(ByteVector("asdf").clear() == ByteVector());
-  }
 
+    ByteVector i("blah blah");
+    ByteVector j("blah");
+    CPPUNIT_ASSERT(i.containsAt(j, 5, 0));
+    CPPUNIT_ASSERT(i.containsAt(j, 6, 1));
+    CPPUNIT_ASSERT(i.containsAt(j, 6, 1, 3));
+  }
+  
   void testFind1()
   {
     CPPUNIT_ASSERT_EQUAL(4, ByteVector("....SggO."). find("SggO"));
@@ -189,6 +195,50 @@ public:
     CPPUNIT_ASSERT_EQUAL((unsigned short)0x0100, ByteVector("\x00\x01", 2).toUShort(false));
     CPPUNIT_ASSERT_EQUAL((unsigned short)0xFF01, ByteVector("\xFF\x01", 2).toUShort());
     CPPUNIT_ASSERT_EQUAL((unsigned short)0x01FF, ByteVector("\xFF\x01", 2).toUShort(false));
+  }
+
+  void testReplace()
+  {
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector(""), ByteVector("<a>"));
+      CPPUNIT_ASSERT_EQUAL(ByteVector("abcdabf"), a);
+    }
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector("foobartoolong"), ByteVector("<a>"));
+      CPPUNIT_ASSERT_EQUAL(ByteVector("abcdabf"), a);
+    }
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector("xx"), ByteVector("yy"));
+      CPPUNIT_ASSERT_EQUAL(ByteVector("abcdabf"), a);
+    }
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector("a"), ByteVector("x"));
+      CPPUNIT_ASSERT_EQUAL(ByteVector("xbcdxbf"), a);
+    }
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector("ab"), ByteVector("xy"));
+      CPPUNIT_ASSERT_EQUAL(ByteVector("xycdxyf"), a);
+    }
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector("a"), ByteVector("<a>"));
+      CPPUNIT_ASSERT_EQUAL(ByteVector("<a>bcd<a>bf"), a);
+    }
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector("ab"), ByteVector("x"));
+      CPPUNIT_ASSERT_EQUAL(ByteVector("xcdxf"), a);
+    }
+    {
+      ByteVector a("abcdabf");
+      a.replace(ByteVector("ab"), ByteVector());
+      CPPUNIT_ASSERT_EQUAL(ByteVector("cdf"), a);
+    }
   }
 
 };

@@ -23,21 +23,16 @@
  *   http://www.mozilla.org/MPL/                                           *
  ***************************************************************************/
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
-#ifdef WITH_MP4
-
 #include <tdebug.h>
 #include <tstring.h>
 #include "mp4atom.h"
 
 using namespace TagLib;
 
-const char *MP4::Atom::containers[10] = {
+const char *MP4::Atom::containers[11] = {
     "moov", "udta", "mdia", "meta", "ilst",
     "stbl", "minf", "moof", "traf", "trak",
+    "stsd"
 };
 
 MP4::Atom::Atom(File *file)
@@ -53,10 +48,10 @@ MP4::Atom::Atom(File *file)
     return;
   }
 
-  length = header.mid(0, 4).toUInt();
+  length = header.toUInt();
 
   if (length == 1) {
-    long long longLength = file->readBlock(8).toLongLong();
+    const long long longLength = file->readBlock(8).toLongLong();
     if (longLength >= 8 && longLength <= 0xFFFFFFFF) {
         // The atom has a 64-bit length, but it's actually a 32-bit value
         length = (long)longLength;
@@ -81,6 +76,9 @@ MP4::Atom::Atom(File *file)
     if(name == containers[i]) {
       if(name == "meta") {
         file->seek(4, File::Current);
+      }
+      else if(name == "stsd") {
+        file->seek(8, File::Current);
       }
       while(file->tell() < offset + length) {
         MP4::Atom *child = new MP4::Atom(file);
@@ -194,4 +192,3 @@ MP4::Atoms::path(const char *name1, const char *name2, const char *name3, const 
   return path;
 }
 
-#endif

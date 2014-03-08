@@ -28,6 +28,7 @@
 #include <tstring.h>
 
 #include "rifffile.h"
+#include <algorithm>
 #include <vector>
 
 using namespace TagLib;
@@ -71,6 +72,15 @@ RIFF::File::~File()
 ////////////////////////////////////////////////////////////////////////////////
 
 RIFF::File::File(FileName file, Endianness endianness) : TagLib::File(file)
+{
+  d = new FilePrivate;
+  d->endianness = endianness;
+
+  if(isOpen())
+    read();
+}
+
+RIFF::File::File(IOStream *stream, Endianness endianness) : TagLib::File(stream)
 {
   d = new FilePrivate;
   d->endianness = endianness;
@@ -129,34 +139,49 @@ ByteVector RIFF::File::chunkData(uint i)
   return readBlock(d->chunks[i].size);
 }
 
+void RIFF::File::setChunkData(uint i, const ByteVector &data)
+{
+  // First we update the global size
+
+  d->size += ((data.size() + 1) & ~1) - (d->chunks[i].size + d->chunks[i].padding);
+  insert(ByteVector::fromUInt(d->size, d->endianness == BigEndian), 4, 4);
+
+  // Now update the specific chunk
+
+  writeChunk(chunkName(i), data, d->chunks[i].offset - 8, d->chunks[i].size + d->chunks[i].padding + 8);
+
+  d->chunks[i].size = data.size();
+  d->chunks[i].padding = (data.size() & 0x01) ? 1 : 0;
+
+  // Now update the internal offsets
+
+  for(i++; i < d->chunks.size(); i++)
+    d->chunks[i].offset = d->chunks[i-1].offset + 8 + d->chunks[i-1].size + d->chunks[i-1].padding;
+}
+
 void RIFF::File::setChunkData(const ByteVector &name, const ByteVector &data)
+{
+  setChunkData(name, data, false);
+}
+
+void RIFF::File::setChunkData(const ByteVector &name, const ByteVector &data, bool alwaysCreate)
 {
   if(d->chunks.size() == 0) {
     debug("RIFF::File::setChunkData - No valid chunks found.");
     return;
   }
 
-  for(uint i = 0; i < d->chunks.size(); i++) {
-    if(d->chunks[i].name == name) {
+  if(alwaysCreate && name != "LIST") {
+    debug("RIFF::File::setChunkData - alwaysCreate should be used for only \"LIST\" chunks.");
+    return;
+  }
 
-      // First we update the global size
-
-      d->size += ((data.size() + 1) & ~1) - (d->chunks[i].size + d->chunks[i].padding);
-      insert(ByteVector::fromUInt(d->size, d->endianness == BigEndian), 4, 4);
-
-      // Now update the specific chunk
-
-      writeChunk(name, data, d->chunks[i].offset - 8, d->chunks[i].size + d->chunks[i].padding + 8);
-
-      d->chunks[i].size = data.size();
-      d->chunks[i].padding = (data.size() & 0x01) ? 1 : 0;
-
-      // Now update the internal offsets
-
-      for(i++; i < d->chunks.size(); i++)
-        d->chunks[i].offset = d->chunks[i-1].offset + 8 + d->chunks[i-1].size + d->chunks[i-1].padding;
-
-      return;
+  if(!alwaysCreate) {
+    for(uint i = 0; i < d->chunks.size(); i++) {
+      if(d->chunks[i].name == name) {
+        setChunkData(i, data);
+        return;
+      }
     }
   }
 
@@ -172,7 +197,7 @@ void RIFF::File::setChunkData(const ByteVector &name, const ByteVector &data)
 
   // Now add the chunk to the file
 
-  writeChunk(name, data, offset, std::max(ulong(0), length() - offset), (offset & 1) ? 1 : 0);
+  writeChunk(name, data, offset, std::max<long>(0, length() - offset), (offset & 1) ? 1 : 0);
 
   // And update our internal structure
 
@@ -180,7 +205,7 @@ void RIFF::File::setChunkData(const ByteVector &name, const ByteVector &data)
     d->chunks[i].padding = 1;
     offset++;
   }
-  
+
   Chunk chunk;
   chunk.name = name;
   chunk.size = data.size();
@@ -188,6 +213,28 @@ void RIFF::File::setChunkData(const ByteVector &name, const ByteVector &data)
   chunk.padding = (data.size() & 0x01) ? 1 : 0;
 
   d->chunks.push_back(chunk);
+}
+
+void RIFF::File::removeChunk(uint i)
+{
+  if(i >= d->chunks.size())
+    return;
+  
+  removeBlock(d->chunks[i].offset - 8, d->chunks[i].size + 8);
+  d->chunks.erase(d->chunks.begin() + i);
+}
+
+void RIFF::File::removeChunk(const ByteVector &name)
+{
+  std::vector<Chunk> newChunks;
+  for(size_t i = 0; i < d->chunks.size(); ++i) {
+    if(d->chunks[i].name == name)
+      removeBlock(d->chunks[i].offset - 8, d->chunks[i].size + 8);
+    else
+      newChunks.push_back(d->chunks[i]);
+  }
+
+  d->chunks.swap(newChunks);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -226,7 +273,7 @@ void RIFF::File::read()
       break;
     }
 
-    if(tell() + chunkSize > uint(length())) {
+    if(static_cast<ulonglong>(tell()) + chunkSize > static_cast<ulonglong>(length())) {
       debug("RIFF::File::read() -- Chunk '" + chunkName + "' has invalid size (larger than the file size)");
       setValid(false);
       break;

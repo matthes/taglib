@@ -23,14 +23,9 @@
  *   http://www.mozilla.org/MPL/                                           *
  ***************************************************************************/
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
-#ifdef WITH_MP4
-
 #include <taglib.h>
 #include <tdebug.h>
+#include "trefcounter.h"
 #include "mp4coverart.h"
 
 using namespace TagLib;
@@ -86,4 +81,3 @@ MP4::CoverArt::data() const
   return d->data;
 }
 
-#endif

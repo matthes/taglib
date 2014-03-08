@@ -42,6 +42,7 @@ public:
     sampleRate(0),
     channels(0),
     sampleWidth(0),
+    sampleFrames(0),
     streamLength(streamLength)
   {
 
@@ -53,6 +54,7 @@ public:
   int sampleRate;
   int channels;
   int sampleWidth;
+  uint sampleFrames;
   uint streamLength;
 };
 
@@ -102,19 +104,26 @@ int RIFF::WAV::Properties::sampleWidth() const
   return d->sampleWidth;
 }
 
+TagLib::uint RIFF::WAV::Properties::sampleFrames() const
+{
+  return d->sampleFrames;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // private members
 ////////////////////////////////////////////////////////////////////////////////
 
 void RIFF::WAV::Properties::read(const ByteVector &data)
 {
-  d->format = data.mid(0, 2).toShort(false);
-  d->channels = data.mid(2, 2).toShort(false);
-  d->sampleRate = data.mid(4, 4).toUInt(false);
-  d->sampleWidth = data.mid(14, 2).toShort(false);
+  d->format      = data.toShort(0, false);
+  d->channels    = data.toShort(2, false);
+  d->sampleRate  = data.toUInt(4, false);
+  d->sampleWidth = data.toShort(14, false);
 
-  uint byteRate = data.mid(8, 4).toUInt(false);
+  const uint byteRate = data.toUInt(8, false);
   d->bitrate = byteRate * 8 / 1000;
 
   d->length = byteRate > 0 ? d->streamLength / byteRate : 0;
+  if(d->channels > 0 && d->sampleWidth > 0)
+    d->sampleFrames = d->streamLength / (d->channels * ((d->sampleWidth + 7) / 8));
 }

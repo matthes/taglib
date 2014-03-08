@@ -39,12 +39,12 @@
 
 #define UnsignedToFloat(u) (((double)((long)(u - 2147483647L - 1))) + 2147483648.0)
 
-static double ConvertFromIeeeExtended(unsigned char *bytes)
+static double ConvertFromIeeeExtended(const TagLib::uchar *bytes)
 {
   double f;
   int expon;
   unsigned long hiMant, loMant;
-    
+
   expon  = ((bytes[0] & 0x7F) << 8) | (bytes[1] & 0xFF);
 
   hiMant = ((unsigned long)(bytes[2] & 0xFF) << 24) |
@@ -85,7 +85,8 @@ public:
     bitrate(0),
     sampleRate(0),
     channels(0),
-    sampleWidth(0)
+    sampleWidth(0),
+    sampleFrames(0)
   {
 
   }
@@ -95,6 +96,7 @@ public:
   int sampleRate;
   int channels;
   int sampleWidth;
+  uint sampleFrames;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,17 +139,22 @@ int RIFF::AIFF::Properties::sampleWidth() const
   return d->sampleWidth;
 }
 
+TagLib::uint RIFF::AIFF::Properties::sampleFrames() const
+{
+  return d->sampleFrames;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // private members
 ////////////////////////////////////////////////////////////////////////////////
 
 void RIFF::AIFF::Properties::read(const ByteVector &data)
 {
-  d->channels       = data.mid(0, 2).toShort();
-  uint sampleFrames = data.mid(2, 4).toUInt();
-  d->sampleWidth    = data.mid(6, 2).toShort();
-  double sampleRate = ConvertFromIeeeExtended(reinterpret_cast<unsigned char *>(data.mid(8, 10).data()));
-  d->sampleRate     = sampleRate;
-  d->bitrate        = (sampleRate * d->sampleWidth * d->channels) / 1000.0;
-  d->length         = d->sampleRate > 0 ? sampleFrames / d->sampleRate : 0;
+  d->channels       = data.toShort(0U);
+  d->sampleFrames   = data.toUInt(2U);
+  d->sampleWidth    = data.toShort(6U);
+  double sampleRate = ConvertFromIeeeExtended(reinterpret_cast<const uchar *>(data.data() + 8));
+  d->sampleRate     = (int)sampleRate;
+  d->bitrate        = (int)((sampleRate * d->sampleWidth * d->channels) / 1000.0);
+  d->length         = d->sampleRate > 0 ? d->sampleFrames / d->sampleRate : 0;
 }

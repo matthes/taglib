@@ -1,14 +1,11 @@
-#include <cppunit/extensions/HelperMacros.h>
 #include <string>
 #include <stdio.h>
 #include <tag.h>
 #include <fileref.h>
 #include <oggflacfile.h>
 #include <vorbisfile.h>
+#include <cppunit/extensions/HelperMacros.h>
 #include "utils.h"
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
 
 using namespace std;
 using namespace TagLib;
@@ -16,9 +13,7 @@ using namespace TagLib;
 class TestFileRef : public CppUnit::TestFixture
 {
   CPPUNIT_TEST_SUITE(TestFileRef);
-#ifdef TAGLIB_WITH_ASF
   CPPUNIT_TEST(testASF);
-#endif
   CPPUNIT_TEST(testMusepack);
   CPPUNIT_TEST(testVorbis);
   CPPUNIT_TEST(testSpeex);
@@ -26,13 +21,13 @@ class TestFileRef : public CppUnit::TestFixture
   CPPUNIT_TEST(testMP3);
   CPPUNIT_TEST(testOGA_FLAC);
   CPPUNIT_TEST(testOGA_Vorbis);
-#ifdef TAGLIB_WITH_MP4
   CPPUNIT_TEST(testMP4_1);
   CPPUNIT_TEST(testMP4_2);
   CPPUNIT_TEST(testMP4_3);
-#endif
   CPPUNIT_TEST(testTrueAudio);
   CPPUNIT_TEST(testAPE);
+  CPPUNIT_TEST(testWav);
+  CPPUNIT_TEST(testUnsupported);
   CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -86,12 +81,10 @@ public:
     fileRefSave("click", ".mpc");
   }
 
-#ifdef TAGLIB_WITH_ASF
   void testASF()
   {
     fileRefSave("silence-1", ".wma");
   }
-#endif
 
   void testVorbis()
   {
@@ -118,7 +111,6 @@ public:
     fileRefSave("empty", ".tta");
   }
 
-#ifdef TAGLIB_WITH_MP4
   void testMP4_1()
   {
     fileRefSave("has-tags", ".m4a");
@@ -133,25 +125,38 @@ public:
   {
     fileRefSave("no-tags", ".3g2");
   }
-#endif
+
+  void testWav()
+  {
+    fileRefSave("empty", ".wav");
+  }
 
   void testOGA_FLAC()
   {
-      FileRef *f = new FileRef("data/empty_flac.oga");
+      FileRef *f = new FileRef(TEST_FILE_PATH_C("empty_flac.oga"));
       CPPUNIT_ASSERT(dynamic_cast<Ogg::Vorbis::File *>(f->file()) == NULL);
       CPPUNIT_ASSERT(dynamic_cast<Ogg::FLAC::File *>(f->file()) != NULL);
   }
 
   void testOGA_Vorbis()
   {
-      FileRef *f = new FileRef("data/empty_vorbis.oga");
+      FileRef *f = new FileRef(TEST_FILE_PATH_C("empty_vorbis.oga"));
       CPPUNIT_ASSERT(dynamic_cast<Ogg::Vorbis::File *>(f->file()) != NULL);
       CPPUNIT_ASSERT(dynamic_cast<Ogg::FLAC::File *>(f->file()) == NULL);
   }
 
   void testAPE()
   {
-    fileRefSave("mac-399.ape", ".ape");
+    fileRefSave("mac-399", ".ape");
+  }
+
+  void testUnsupported()
+  {
+    FileRef f1(TEST_FILE_PATH_C("no-extension"));
+    CPPUNIT_ASSERT(f1.isNull());
+    
+    FileRef f2(TEST_FILE_PATH_C("unsupported-extension.xxx"));
+    CPPUNIT_ASSERT(f2.isNull());
   }
 };
 

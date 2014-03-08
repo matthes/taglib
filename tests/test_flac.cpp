@@ -1,11 +1,12 @@
-#include <cppunit/extensions/HelperMacros.h>
 #include <string>
 #include <stdio.h>
 #include <tag.h>
 #include <tstringlist.h>
 #include <tbytevectorlist.h>
+#include <tpropertymap.h>
 #include <flacfile.h>
 #include <xiphcomment.h>
+#include <cppunit/extensions/HelperMacros.h>
 #include "utils.h"
 
 using namespace std;
@@ -22,13 +23,15 @@ class TestFLAC : public CppUnit::TestFixture
   CPPUNIT_TEST(testRemoveAllPictures);
   CPPUNIT_TEST(testRepeatedSave);
   CPPUNIT_TEST(testSaveMultipleValues);
+  CPPUNIT_TEST(testDict);
+  CPPUNIT_TEST(testInvalid);
   CPPUNIT_TEST_SUITE_END();
 
 public:
 
   void testSignature()
   {
-    FLAC::File f("data/no-tags.flac");
+    FLAC::File f(TEST_FILE_PATH_C("no-tags.flac"));
     CPPUNIT_ASSERT_EQUAL(ByteVector("a1b141f766e9849ac3db1030a20a3c77"), f.audioProperties()->signature().toHex());
   }
 
@@ -190,7 +193,7 @@ public:
 
   void testSaveMultipleValues()
   {
-    ScopedFileCopy copy("silence-44-s", ".flac", false);
+    ScopedFileCopy copy("silence-44-s", ".flac");
     string newname = copy.fileName();
 
     FLAC::File *f = new FLAC::File(newname.c_str());
@@ -206,6 +209,38 @@ public:
     CPPUNIT_ASSERT_EQUAL(TagLib::uint(2), m["ARTIST"].size());
     CPPUNIT_ASSERT_EQUAL(String("artist 1"), m["ARTIST"][0]);
     CPPUNIT_ASSERT_EQUAL(String("artist 2"), m["ARTIST"][1]);
+  }
+
+  void testDict()
+  {
+    // test unicode & multiple values with dict interface
+    ScopedFileCopy copy("silence-44-s", ".flac");
+    string newname = copy.fileName();
+
+    FLAC::File *f = new FLAC::File(newname.c_str());
+    PropertyMap dict;
+    dict["ARTIST"].append("artøst 1");
+    dict["ARTIST"].append("artöst 2");
+    f->setProperties(dict);
+    f->save();
+    delete f;
+
+    f = new FLAC::File(newname.c_str());
+    dict = f->properties();
+    CPPUNIT_ASSERT_EQUAL(TagLib::uint(2), dict["ARTIST"].size());
+    CPPUNIT_ASSERT_EQUAL(String("artøst 1"), dict["ARTIST"][0]);
+    CPPUNIT_ASSERT_EQUAL(String("artöst 2"), dict["ARTIST"][1]);
+  }
+
+  void testInvalid()
+  {
+    ScopedFileCopy copy("silence-44-s", ".flac");
+    PropertyMap map;
+    map["HÄÖ"] = String("bla");
+    FLAC::File f(copy.fileName().c_str());
+    PropertyMap invalid = f.setProperties(map);
+    CPPUNIT_ASSERT_EQUAL(TagLib::uint(1), invalid.size());
+    CPPUNIT_ASSERT_EQUAL(TagLib::uint(0), f.properties().size());
   }
 
 };

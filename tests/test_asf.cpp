@@ -1,10 +1,11 @@
-#include <cppunit/extensions/HelperMacros.h>
 #include <string>
 #include <stdio.h>
 #include <tag.h>
 #include <tstringlist.h>
 #include <tbytevectorlist.h>
+#include <tpropertymap.h>
 #include <asffile.h>
+#include <cppunit/extensions/HelperMacros.h>
 #include "utils.h"
 
 using namespace std;
@@ -13,7 +14,7 @@ using namespace TagLib;
 class TestASF : public CppUnit::TestFixture
 {
   CPPUNIT_TEST_SUITE(TestASF);
-  CPPUNIT_TEST(testProperties);
+  CPPUNIT_TEST(testAudioProperties);
   CPPUNIT_TEST(testRead);
   CPPUNIT_TEST(testSaveMultipleValues);
   CPPUNIT_TEST(testSaveStream);
@@ -22,13 +23,14 @@ class TestASF : public CppUnit::TestFixture
   CPPUNIT_TEST(testSaveLargeValue);
   CPPUNIT_TEST(testSavePicture);
   CPPUNIT_TEST(testSaveMultiplePictures);
+  CPPUNIT_TEST(testProperties);
   CPPUNIT_TEST_SUITE_END();
 
 public:
 
-  void testProperties()
+  void testAudioProperties()
   {
-    ASF::File f("data/silence-1.wma");
+    ASF::File f(TEST_FILE_PATH_C("silence-1.wma"));
     CPPUNIT_ASSERT_EQUAL(4, f.audioProperties()->length());
     CPPUNIT_ASSERT_EQUAL(64, f.audioProperties()->bitrate());
     CPPUNIT_ASSERT_EQUAL(2, f.audioProperties()->channels());
@@ -37,7 +39,7 @@ public:
 
   void testRead()
   {
-    ASF::File f("data/silence-1.wma");
+    ASF::File f(TEST_FILE_PATH_C("silence-1.wma"));
     CPPUNIT_ASSERT_EQUAL(String("test"), f.tag()->title());
   }
 
@@ -164,7 +166,7 @@ public:
     f = new ASF::File(newname.c_str());
     ASF::AttributeList values2 = f->tag()->attributeListMap()["WM/Picture"];
     CPPUNIT_ASSERT_EQUAL(TagLib::uint(1), values2.size());
-    ASF::Attribute attr2 = values2.front(); 
+    ASF::Attribute attr2 = values2.front();
     ASF::Picture picture2 = attr2.toPicture();
     CPPUNIT_ASSERT(picture2.isValid());
     CPPUNIT_ASSERT_EQUAL(String("image/jpeg"), picture2.mimeType());
@@ -213,6 +215,39 @@ public:
     CPPUNIT_ASSERT_EQUAL(String("back cover"), picture4.description());
     CPPUNIT_ASSERT_EQUAL(ByteVector("PNG data"), picture4.picture());
     delete f;
+  }
+
+  void testProperties()
+  {
+    ASF::File f(TEST_FILE_PATH_C("silence-1.wma"));
+    
+    PropertyMap tags = f.properties();
+
+    tags["TRACKNUMBER"] = StringList("2");
+    tags["DISCNUMBER"] = StringList("3");
+    tags["BPM"] = StringList("123");
+    tags["ARTIST"] = StringList("Foo Bar");
+    f.setProperties(tags);
+
+    tags = f.properties();
+
+    CPPUNIT_ASSERT_EQUAL(String("Foo Bar"), f.tag()->artist());
+    CPPUNIT_ASSERT_EQUAL(StringList("Foo Bar"), tags["ARTIST"]);
+
+    CPPUNIT_ASSERT(f.tag()->attributeListMap().contains("WM/BeatsPerMinute"));
+    CPPUNIT_ASSERT_EQUAL(1u, f.tag()->attributeListMap()["WM/BeatsPerMinute"].size());
+    CPPUNIT_ASSERT_EQUAL(String("123"), f.tag()->attributeListMap()["WM/BeatsPerMinute"].front().toString());
+    CPPUNIT_ASSERT_EQUAL(StringList("123"), tags["BPM"]);
+
+    CPPUNIT_ASSERT(f.tag()->attributeListMap().contains("WM/TrackNumber"));
+    CPPUNIT_ASSERT_EQUAL(1u, f.tag()->attributeListMap()["WM/TrackNumber"].size());
+    CPPUNIT_ASSERT_EQUAL(String("2"), f.tag()->attributeListMap()["WM/TrackNumber"].front().toString());
+    CPPUNIT_ASSERT_EQUAL(StringList("2"), tags["TRACKNUMBER"]);
+
+    CPPUNIT_ASSERT(f.tag()->attributeListMap().contains("WM/PartOfSet"));
+    CPPUNIT_ASSERT_EQUAL(1u, f.tag()->attributeListMap()["WM/PartOfSet"].size());
+    CPPUNIT_ASSERT_EQUAL(String("3"), f.tag()->attributeListMap()["WM/PartOfSet"].front().toString());
+    CPPUNIT_ASSERT_EQUAL(StringList("3"), tags["DISCNUMBER"]);
   }
 
 };

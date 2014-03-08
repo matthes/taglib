@@ -1,5 +1,5 @@
 /**************************************************************************
-    copyright            : (C) 2007 by Lukáš Lalinský
+    copyright            : (C) 2007,2011 by Lukáš Lalinský
     email                : lalinsky@gmail.com
  **************************************************************************/
 
@@ -23,14 +23,9 @@
  *   http://www.mozilla.org/MPL/                                           *
  ***************************************************************************/
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
-#ifdef WITH_MP4
-
 #include <tdebug.h>
 #include <tstring.h>
+#include <tpropertymap.h>
 #include "mp4atom.h"
 #include "mp4tag.h"
 #include "id3v1genres.h"
@@ -46,6 +41,11 @@ public:
   Atoms *atoms;
   ItemListMap items;
 };
+
+MP4::Tag::Tag()
+{
+  d = new TagPrivate;
+}
 
 MP4::Tag::Tag(TagLib::File *file, MP4::Atoms *atoms)
 {
@@ -68,11 +68,22 @@ MP4::Tag::Tag(TagLib::File *file, MP4::Atoms *atoms)
     else if(atom->name == "trkn" || atom->name == "disk") {
       parseIntPair(atom, file);
     }
-    else if(atom->name == "cpil" || atom->name == "pgap" || atom->name == "pcst") {
+    else if(atom->name == "cpil" || atom->name == "pgap" || atom->name == "pcst" ||
+            atom->name == "hdvd") {
       parseBool(atom, file);
     }
     else if(atom->name == "tmpo") {
       parseInt(atom, file);
+    }
+    else if(atom->name == "tvsn" || atom->name == "tves" || atom->name == "cnID" ||
+            atom->name == "sfID" || atom->name == "atID" || atom->name == "geID") {
+      parseUInt(atom, file);
+    }
+    else if(atom->name == "plID") {
+      parseLongLong(atom, file);
+    }
+    else if(atom->name == "stik" || atom->name == "rtng" || atom->name == "akID") {
+      parseByte(atom, file);
     }
     else if(atom->name == "gnre") {
       parseGnre(atom, file);
@@ -91,17 +102,17 @@ MP4::Tag::~Tag()
   delete d;
 }
 
-ByteVectorList
-MP4::Tag::parseData(MP4::Atom *atom, TagLib::File *file, int expectedFlags, bool freeForm)
+MP4::AtomDataList
+MP4::Tag::parseData2(MP4::Atom *atom, TagLib::File *file, int expectedFlags, bool freeForm)
 {
-  ByteVectorList result;
+  AtomDataList result;
   ByteVector data = file->readBlock(atom->length - 8);
   int i = 0;
   unsigned int pos = 0;
   while(pos < data.size()) {
-    int length = data.mid(pos, 4).toUInt();
+    const int length = static_cast<int>(data.toUInt(pos));
     ByteVector name = data.mid(pos + 4, 4);
-    int flags = data.mid(pos + 8, 4).toUInt();
+    const int flags = static_cast<int>(data.toUInt(pos + 8));
     if(freeForm && i < 2) {
       if(i == 0 && name != "mean") {
         debug("MP4: Unexpected atom \"" + name + "\", expecting \"mean\"");
@@ -111,7 +122,7 @@ MP4::Tag::parseData(MP4::Atom *atom, TagLib::File *file, int expectedFlags, bool
         debug("MP4: Unexpected atom \"" + name + "\", expecting \"name\"");
         return result;
       }
-      result.append(data.mid(pos + 12, length - 12));
+      result.append(AtomData(AtomDataType(flags), data.mid(pos + 12, length - 12)));
     }
     else {
       if(name != "data") {
@@ -119,11 +130,22 @@ MP4::Tag::parseData(MP4::Atom *atom, TagLib::File *file, int expectedFlags, bool
         return result;
       }
       if(expectedFlags == -1 || flags == expectedFlags) {
-        result.append(data.mid(pos + 16, length - 16));
+        result.append(AtomData(AtomDataType(flags), data.mid(pos + 16, length - 16)));
       }
     }
     pos += length;
     i++;
+  }
+  return result;
+}
+
+ByteVectorList
+MP4::Tag::parseData(MP4::Atom *atom, TagLib::File *file, int expectedFlags, bool freeForm)
+{
+  AtomDataList data = parseData2(atom, file, expectedFlags, freeForm);
+  ByteVectorList result;
+  for(uint i = 0; i < data.size(); i++) {
+    result.append(data[i].data);
   }
   return result;
 }
@@ -133,7 +155,34 @@ MP4::Tag::parseInt(MP4::Atom *atom, TagLib::File *file)
 {
   ByteVectorList data = parseData(atom, file);
   if(data.size()) {
-    d->items.insert(atom->name, (int)data[0].toShort());
+    addItem(atom->name, (int)data[0].toShort());
+  }
+}
+
+void
+MP4::Tag::parseUInt(MP4::Atom *atom, TagLib::File *file)
+{
+  ByteVectorList data = parseData(atom, file);
+  if(data.size()) {
+    addItem(atom->name, data[0].toUInt());
+  }
+}
+
+void
+MP4::Tag::parseLongLong(MP4::Atom *atom, TagLib::File *file)
+{
+  ByteVectorList data = parseData(atom, file);
+  if(data.size()) {
+    addItem(atom->name, data[0].toLongLong());
+  }
+}
+
+void
+MP4::Tag::parseByte(MP4::Atom *atom, TagLib::File *file)
+{
+  ByteVectorList data = parseData(atom, file);
+  if(data.size()) {
+    addItem(atom->name, (uchar)data[0].at(0));
   }
 }
 
@@ -143,8 +192,8 @@ MP4::Tag::parseGnre(MP4::Atom *atom, TagLib::File *file)
   ByteVectorList data = parseData(atom, file);
   if(data.size()) {
     int idx = (int)data[0].toShort();
-    if(!d->items.contains("\251gen") && idx > 0) {
-      d->items.insert("\251gen", StringList(ID3v1::genre(idx - 1)));
+    if(idx > 0) {
+      addItem("\251gen", StringList(ID3v1::genre(idx - 1)));
     }
   }
 }
@@ -154,9 +203,9 @@ MP4::Tag::parseIntPair(MP4::Atom *atom, TagLib::File *file)
 {
   ByteVectorList data = parseData(atom, file);
   if(data.size()) {
-    int a = data[0].mid(2, 2).toShort();
-    int b = data[0].mid(4, 2).toShort();
-    d->items.insert(atom->name, MP4::Item(a, b));
+    const int a = data[0].toShort(2U);
+    const int b = data[0].toShort(4U);
+    addItem(atom->name, MP4::Item(a, b));
   }
 }
 
@@ -166,7 +215,7 @@ MP4::Tag::parseBool(MP4::Atom *atom, TagLib::File *file)
   ByteVectorList data = parseData(atom, file);
   if(data.size()) {
     bool value = data[0].size() ? data[0][0] != '\0' : false;
-    d->items.insert(atom->name, value);
+    addItem(atom->name, value);
   }
 }
 
@@ -179,21 +228,41 @@ MP4::Tag::parseText(MP4::Atom *atom, TagLib::File *file, int expectedFlags)
     for(unsigned int i = 0; i < data.size(); i++) {
       value.append(String(data[i], String::UTF8));
     }
-    d->items.insert(atom->name, value);
+    addItem(atom->name, value);
   }
 }
 
 void
 MP4::Tag::parseFreeForm(MP4::Atom *atom, TagLib::File *file)
 {
-  ByteVectorList data = parseData(atom, file, 1, true);
+  AtomDataList data = parseData2(atom, file, -1, true);
   if(data.size() > 2) {
-    StringList value;
-    for(unsigned int i = 2; i < data.size(); i++) {
-      value.append(String(data[i], String::UTF8));
+    String name = "----:" + String(data[0].data, String::UTF8) + ':' + String(data[1].data, String::UTF8);
+    AtomDataType type = data[2].type;
+    for(uint i = 2; i < data.size(); i++) {
+      if(data[i].type != type) {
+        debug("MP4: We currently don't support values with multiple types");
+        break;
+      }
     }
-    String name = "----:" + data[0] + ':' + data[1];
-    d->items.insert(name, value);
+    if(type == TypeUTF8) {
+      StringList value;
+      for(uint i = 2; i < data.size(); i++) {
+        value.append(String(data[i].data, String::UTF8));
+      }
+      Item item(value);
+      item.setAtomDataType(type);
+      addItem(name, item);
+    }
+    else {
+      ByteVectorList value;
+      for(uint i = 2; i < data.size(); i++) {
+        value.append(data[i].data);
+      }
+      Item item(value);
+      item.setAtomDataType(type);
+      addItem(name, item);
+    }
   }
 }
 
@@ -204,21 +273,24 @@ MP4::Tag::parseCovr(MP4::Atom *atom, TagLib::File *file)
   ByteVector data = file->readBlock(atom->length - 8);
   unsigned int pos = 0;
   while(pos < data.size()) {
-    int length = data.mid(pos, 4).toUInt();
+    const int length = static_cast<int>(data.toUInt(pos));
     ByteVector name = data.mid(pos + 4, 4);
-    int flags = data.mid(pos + 8, 4).toUInt();
+    const int flags = static_cast<int>(data.toUInt(pos + 8));
     if(name != "data") {
       debug("MP4: Unexpected atom \"" + name + "\", expecting \"data\"");
       break;
     }
-    if(flags == MP4::CoverArt::PNG || flags == MP4::CoverArt::JPEG) {
+    if(flags == TypeJPEG || flags == TypePNG || flags == TypeBMP || flags == TypeGIF || flags == TypeImplicit) {
       value.append(MP4::CoverArt(MP4::CoverArt::Format(flags),
                                  data.mid(pos + 16, length - 16)));
+    }
+    else {
+      debug("MP4: Unknown covr format " + String::number(flags));
     }
     pos += length;
   }
   if(value.size() > 0)
-    d->items.insert(atom->name, value);
+    addItem(atom->name, value);
 }
 
 ByteVector
@@ -251,7 +323,7 @@ MP4::Tag::renderBool(const ByteVector &name, MP4::Item &item)
 {
   ByteVectorList data;
   data.append(ByteVector(1, item.toBool() ? '\1' : '\0'));
-  return renderData(name, 0x15, data);
+  return renderData(name, TypeInteger, data);
 }
 
 ByteVector
@@ -259,7 +331,31 @@ MP4::Tag::renderInt(const ByteVector &name, MP4::Item &item)
 {
   ByteVectorList data;
   data.append(ByteVector::fromShort(item.toInt()));
-  return renderData(name, 0x15, data);
+  return renderData(name, TypeInteger, data);
+}
+
+ByteVector
+MP4::Tag::renderUInt(const ByteVector &name, MP4::Item &item)
+{
+  ByteVectorList data;
+  data.append(ByteVector::fromUInt(item.toUInt()));
+  return renderData(name, TypeInteger, data);
+}
+
+ByteVector
+MP4::Tag::renderLongLong(const ByteVector &name, MP4::Item &item)
+{
+  ByteVectorList data;
+  data.append(ByteVector::fromLongLong(item.toLongLong()));
+  return renderData(name, TypeInteger, data);
+}
+
+ByteVector
+MP4::Tag::renderByte(const ByteVector &name, MP4::Item &item)
+{
+  ByteVectorList data;
+  data.append(ByteVector(1, item.toByte()));
+  return renderData(name, TypeInteger, data);
 }
 
 ByteVector
@@ -270,7 +366,7 @@ MP4::Tag::renderIntPair(const ByteVector &name, MP4::Item &item)
               ByteVector::fromShort(item.toIntPair().first) +
               ByteVector::fromShort(item.toIntPair().second) +
               ByteVector(2, '\0'));
-  return renderData(name, 0x00, data);
+  return renderData(name, TypeImplicit, data);
 }
 
 ByteVector
@@ -280,7 +376,7 @@ MP4::Tag::renderIntPairNoTrailing(const ByteVector &name, MP4::Item &item)
   data.append(ByteVector(2, '\0') +
               ByteVector::fromShort(item.toIntPair().first) +
               ByteVector::fromShort(item.toIntPair().second));
-  return renderData(name, 0x00, data);
+  return renderData(name, TypeImplicit, data);
 }
 
 ByteVector
@@ -317,9 +413,26 @@ MP4::Tag::renderFreeForm(const String &name, MP4::Item &item)
   ByteVector data;
   data.append(renderAtom("mean", ByteVector::fromUInt(0) + header[1].data(String::UTF8)));
   data.append(renderAtom("name", ByteVector::fromUInt(0) + header[2].data(String::UTF8)));
-  StringList value = item.toStringList();
-  for(unsigned int i = 0; i < value.size(); i++) {
-    data.append(renderAtom("data", ByteVector::fromUInt(1) + ByteVector(4, '\0') + value[i].data(String::UTF8)));
+  AtomDataType type = item.atomDataType();
+  if(type == TypeUndefined) {
+    if(!item.toStringList().isEmpty()) {
+      type = TypeUTF8;
+    }
+    else {
+      type = TypeImplicit;
+    }
+  }
+  if(type == TypeUTF8) {
+    StringList value = item.toStringList();
+    for(unsigned int i = 0; i < value.size(); i++) {
+      data.append(renderAtom("data", ByteVector::fromUInt(type) + ByteVector(4, '\0') + value[i].data(String::UTF8)));
+    }
+  }
+  else {
+    ByteVectorList value = item.toByteVectorList();
+    for(unsigned int i = 0; i < value.size(); i++) {
+      data.append(renderAtom("data", ByteVector::fromUInt(type) + ByteVector(4, '\0') + value[i]));
+    }
   }
   return renderAtom("----", data);
 }
@@ -339,11 +452,21 @@ MP4::Tag::save()
     else if(name == "disk") {
       data.append(renderIntPairNoTrailing(name.data(String::Latin1), i->second));
     }
-    else if(name == "cpil" || name == "pgap" || name == "pcst") {
+    else if(name == "cpil" || name == "pgap" || name == "pcst" || name == "hdvd") {
       data.append(renderBool(name.data(String::Latin1), i->second));
     }
     else if(name == "tmpo") {
       data.append(renderInt(name.data(String::Latin1), i->second));
+    }
+    else if(name == "tvsn" || name == "tves" || name == "cnID" ||
+            name == "sfID" || name == "atID" || name == "geID") {
+      data.append(renderUInt(name.data(String::Latin1), i->second));
+    }
+    else if(name == "plID") {
+      data.append(renderLongLong(name.data(String::Latin1), i->second));
+    }
+    else if(name == "stik" || name == "rtng" || name == "akID") {
+      data.append(renderByte(name.data(String::Latin1), i->second));
     }
     else if(name == "covr") {
       data.append(renderCovr(name.data(String::Latin1), i->second));
@@ -403,11 +526,11 @@ MP4::Tag::updateOffsets(long delta, long offset)
       }
       d->file->seek(atom->offset + 12);
       ByteVector data = d->file->readBlock(atom->length - 12);
-      unsigned int count = data.mid(0, 4).toUInt();
+      unsigned int count = data.toUInt();
       d->file->seek(atom->offset + 16);
-      int pos = 4;
+      uint pos = 4;
       while(count--) {
-        long o = data.mid(pos, 4).toUInt();
+        long o = static_cast<long>(data.toUInt(pos));
         if(o > offset) {
           o += delta;
         }
@@ -424,11 +547,11 @@ MP4::Tag::updateOffsets(long delta, long offset)
       }
       d->file->seek(atom->offset + 12);
       ByteVector data = d->file->readBlock(atom->length - 12);
-      unsigned int count = data.mid(0, 4).toUInt();
+      unsigned int count = data.toUInt();
       d->file->seek(atom->offset + 16);
-      int pos = 4;
+      uint pos = 4;
       while(count--) {
-        long long o = data.mid(pos, 8).toLongLong();
+        long long o = data.toLongLong(pos);
         if(o > offset) {
           o += delta;
         }
@@ -447,10 +570,10 @@ MP4::Tag::updateOffsets(long delta, long offset)
         atom->offset += delta;
       }
       d->file->seek(atom->offset + 9);
-      ByteVector data = d->file->readBlock(atom->offset - 9);
-      unsigned int flags = (ByteVector(1, '\0') + data.mid(0, 3)).toUInt();
+      ByteVector data = d->file->readBlock(atom->length - 9);
+      const unsigned int flags = data.toUInt(0, 3, true);
       if(flags & 1) {
-        long long o = data.mid(7, 8).toLongLong();
+        long long o = data.toLongLong(7U);
         if(o > offset) {
           o += delta;
         }
@@ -633,4 +756,162 @@ MP4::Tag::itemListMap()
   return d->items;
 }
 
-#endif
+static const char *keyTranslation[][2] = {
+  { "\251nam", "TITLE" },
+  { "\251ART", "ARTIST" },
+  { "\251alb", "ALBUM" },
+  { "\251cmt", "COMMENT" },
+  { "\251gen", "GENRE" },
+  { "\251day", "DATE" },
+  { "\251wrt", "COMPOSER" },
+  { "\251grp", "GROUPING" },
+  { "trkn", "TRACKNUMBER" },
+  { "disk", "DISCNUMBER" },
+  { "cpil", "COMPILATION" },
+  { "tmpo", "BPM" },
+  { "cprt", "COPYRIGHT" },
+  { "\251lyr", "LYRICS" },
+  { "\251too", "ENCODEDBY" },
+  { "soal", "ALBUMSORT" },
+  { "soaa", "ALBUMARTISTSORT" },
+  { "soar", "ARTISTSORT" },
+  { "sonm", "TITLESORT" },
+  { "soco", "COMPOSERSORT" },
+  { "sosn", "SHOWSORT" },
+  { "----:com.apple.iTunes:MusicBrainz Track Id", "MUSICBRAINZ_TRACKID" },
+  { "----:com.apple.iTunes:MusicBrainz Artist Id", "MUSICBRAINZ_ARTISTID" },
+  { "----:com.apple.iTunes:MusicBrainz Album Id", "MUSICBRAINZ_ALBUMID" },
+  { "----:com.apple.iTunes:MusicBrainz Album Artist Id", "MUSICBRAINZ_ALBUMARTISTID" },
+  { "----:com.apple.iTunes:MusicBrainz Release Group Id", "MUSICBRAINZ_RELEASEGROUPID" },
+  { "----:com.apple.iTunes:MusicBrainz Work Id", "MUSICBRAINZ_WORKID" },
+  { "----:com.apple.iTunes:ASIN", "ASIN" },
+  { "----:com.apple.iTunes:LABEL", "LABEL" },
+  { "----:com.apple.iTunes:LYRICIST", "LYRICIST" },
+  { "----:com.apple.iTunes:CONDUCTOR", "CONDUCTOR" },
+  { "----:com.apple.iTunes:REMIXER", "REMIXER" },
+  { "----:com.apple.iTunes:ENGINEER", "ENGINEER" },
+  { "----:com.apple.iTunes:PRODUCER", "PRODUCER" },
+  { "----:com.apple.iTunes:DJMIXER", "DJMIXER" },
+  { "----:com.apple.iTunes:MIXER", "MIXER" },
+  { "----:com.apple.iTunes:SUBTITLE", "SUBTITLE" },
+  { "----:com.apple.iTunes:DISCSUBTITLE", "DISCSUBTITLE" },
+  { "----:com.apple.iTunes:MOOD", "MOOD" },
+  { "----:com.apple.iTunes:ISRC", "ISRC" },
+  { "----:com.apple.iTunes:CATALOGNUMBER", "CATALOGNUMBER" },
+  { "----:com.apple.iTunes:BARCODE", "BARCODE" },
+  { "----:com.apple.iTunes:SCRIPT", "SCRIPT" },
+  { "----:com.apple.iTunes:LANGUAGE", "LANGUAGE" },
+  { "----:com.apple.iTunes:LICENSE", "LICENSE" },
+  { "----:com.apple.iTunes:MEDIA", "MEDIA" },
+};
+
+PropertyMap MP4::Tag::properties() const
+{
+  static Map<String, String> keyMap;
+  if(keyMap.isEmpty()) {
+    int numKeys = sizeof(keyTranslation) / sizeof(keyTranslation[0]);
+    for(int i = 0; i < numKeys; i++) {
+      keyMap[keyTranslation[i][0]] = keyTranslation[i][1];
+    }
+  }
+
+  PropertyMap props;
+  MP4::ItemListMap::ConstIterator it = d->items.begin();
+  for(; it != d->items.end(); ++it) {
+    if(keyMap.contains(it->first)) {
+      String key = keyMap[it->first];
+      if(key == "TRACKNUMBER" || key == "DISCNUMBER") {
+        MP4::Item::IntPair ip = it->second.toIntPair();
+        String value = String::number(ip.first);
+        if(ip.second) {
+          value += "/" + String::number(ip.second);
+        }
+        props[key] = value;
+      }
+      else if(key == "BPM") {
+        props[key] = String::number(it->second.toInt());
+      }
+      else if(key == "COMPILATION") {
+        props[key] = String::number(it->second.toBool());
+      }
+      else {
+        props[key] = it->second.toStringList();
+      }
+    }
+    else {
+      props.unsupportedData().append(it->first);
+    }
+  }
+  return props;
+}
+
+void MP4::Tag::removeUnsupportedProperties(const StringList &props)
+{
+  StringList::ConstIterator it = props.begin();
+  for(; it != props.end(); ++it)
+    d->items.erase(*it);
+}
+
+PropertyMap MP4::Tag::setProperties(const PropertyMap &props)
+{
+  static Map<String, String> reverseKeyMap;
+  if(reverseKeyMap.isEmpty()) {
+    int numKeys = sizeof(keyTranslation) / sizeof(keyTranslation[0]);
+    for(int i = 0; i < numKeys; i++) {
+      reverseKeyMap[keyTranslation[i][1]] = keyTranslation[i][0];
+    }
+  }
+
+  PropertyMap origProps = properties();
+  PropertyMap::ConstIterator it = origProps.begin();
+  for(; it != origProps.end(); ++it) {
+    if(!props.contains(it->first) || props[it->first].isEmpty()) {
+      d->items.erase(reverseKeyMap[it->first]);
+    }
+  }
+
+  PropertyMap ignoredProps;
+  it = props.begin();
+  for(; it != props.end(); ++it) {
+    if(reverseKeyMap.contains(it->first)) {
+      String name = reverseKeyMap[it->first];
+      if(it->first == "TRACKNUMBER" || it->first == "DISCNUMBER") {
+        int first = 0, second = 0;
+        StringList parts = StringList::split(it->second.front(), "/");
+        if(parts.size() > 0) {
+          first = parts[0].toInt();
+          if(parts.size() > 1) {
+            second = parts[1].toInt();
+          }
+          d->items[name] = MP4::Item(first, second);
+        }
+      }
+      else if(it->first == "BPM") {
+        int value = it->second.front().toInt();
+        d->items[name] = MP4::Item(value);
+      }
+      else if(it->first == "COMPILATION") {
+        bool value = (it->second.front().toInt() != 0);
+        d->items[name] = MP4::Item(value);
+      }
+      else {
+        d->items[name] = it->second;
+      }
+    }
+    else {
+      ignoredProps.insert(it->first, it->second);
+    }
+  }
+
+  return ignoredProps;
+}
+
+void MP4::Tag::addItem(const String &name, const Item &value)
+{
+  if(!d->items.contains(name)) {
+    d->items.insert(name, value);
+  }
+  else {
+    debug("MP4: Ignoring duplicate atom \"" + name + "\"");
+  }
+}

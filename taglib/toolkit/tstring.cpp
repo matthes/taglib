@@ -229,13 +229,16 @@ String::String(const wchar_t *s, Type t)
 String::String(const char *s, Type t)
   : d(new StringPrivate())
 {
-  if(t == Latin1)
-    copyFromLatin1(s, ::strlen(s));
-  else if(t == String::UTF8)
-    copyFromUTF8(s, ::strlen(s));
-  else {
-    debug("String::String() -- A const char * should not contain UTF16.");
-  }
+
+	if(s != NULL) {
+		if(t == Latin1)
+			copyFromLatin1(s, ::strlen(s));
+		else if(t == String::UTF8)
+			copyFromUTF8(s, ::strlen(s));
+		else {
+			debug("String::String() -- A const char * should not contain UTF16.");
+		}
+	}
 }
 
 String::String(wchar_t c, Type t)

@@ -1,31 +1,31 @@
 /***************************************************************************
-    copyright            : (C) 2006 by Lukáš Lalinský
-    email                : lalinsky@gmail.com
+copyright            : (C) 2006 by Lukáš Lalinský
+email                : lalinsky@gmail.com
 
-    copyright            : (C) 2004 by Allan Sandfeld Jensen
-    email                : kde@carewolf.org
-                           (original MPC implementation)
- ***************************************************************************/
+copyright            : (C) 2004 by Allan Sandfeld Jensen
+email                : kde@carewolf.org
+(original MPC implementation)
+***************************************************************************/
 
 /***************************************************************************
- *   This library is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU Lesser General Public License version   *
- *   2.1 as published by the Free Software Foundation.                     *
- *                                                                         *
- *   This library is distributed in the hope that it will be useful, but   *
- *   WITHOUT ANY WARRANTY; without even the implied warranty of            *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU     *
- *   Lesser General Public License for more details.                       *
- *                                                                         *
- *   You should have received a copy of the GNU Lesser General Public      *
- *   License along with this library; if not, write to the Free Software   *
- *   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA         *
- *   02110-1301  USA                                                       *
- *                                                                         *
- *   Alternatively, this file is available under the Mozilla Public        *
- *   License Version 1.1.  You may obtain a copy of the License at         *
- *   http://www.mozilla.org/MPL/                                           *
- ***************************************************************************/
+*   This library is free software; you can redistribute it and/or modify  *
+*   it under the terms of the GNU Lesser General Public License version   *
+*   2.1 as published by the Free Software Foundation.                     *
+*                                                                         *
+*   This library is distributed in the hope that it will be useful, but   *
+*   WITHOUT ANY WARRANTY; without even the implied warranty of            *
+*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU     *
+*   Lesser General Public License for more details.                       *
+*                                                                         *
+*   You should have received a copy of the GNU Lesser General Public      *
+*   License along with this library; if not, write to the Free Software   *
+*   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA         *
+*   02110-1301  USA                                                       *
+*                                                                         *
+*   Alternatively, this file is available under the Mozilla Public        *
+*   License Version 1.1.  You may obtain a copy of the License at         *
+*   http://www.mozilla.org/MPL/                                           *
+***************************************************************************/
 
 #include <tbytevector.h>
 #include <tstring.h>
@@ -41,41 +41,44 @@
 
 using namespace TagLib;
 
-namespace
-{
-  enum { WavAPEIndex, WavID3v1Index };
+namespace {
+    enum {
+	    WavAPEIndex, WavID3v1Index
+    };
 }
 
-class WavPack::File::FilePrivate
-{
+class WavPack::File::FilePrivate {
 public:
-  FilePrivate() :
-    APELocation(-1),
-    APESize(0),
-    ID3v1Location(-1),
-    properties(0),
-    hasAPE(false),
-    hasID3v1(false) {}
+	FilePrivate() :
+			APELocation(-1),
+			APESize(0),
+			ID3v1Location(-1),
+			properties(0),
+			hasAPE(false),
+			hasID3v1(false) {
+	}
 
-  ~FilePrivate()
-  {
-    delete properties;
-  }
+	~FilePrivate() {
 
-  long APELocation;
-  uint APESize;
+		delete properties;
+	}
 
-  long ID3v1Location;
+	long APELocation;
 
-  TagUnion tag;
+	uint APESize;
 
-  Properties *properties;
+	long ID3v1Location;
 
-  // These indicate whether the file *on disk* has these tags, not if
-  // this data structure does.  This is used in computing offsets.
+	TagUnion tag;
 
-  bool hasAPE;
-  bool hasID3v1;
+	Properties *properties;
+
+	// These indicate whether the file *on disk* has these tags, not if
+	// this data structure does.  This is used in computing offsets.
+
+	bool hasAPE;
+
+	bool hasID3v1;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,229 +86,244 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 WavPack::File::File(FileName file, bool readProperties,
-                Properties::ReadStyle propertiesStyle) : TagLib::File(file)
-{
-  d = new FilePrivate;
-  if(isOpen())
-    read(readProperties, propertiesStyle);
+		Properties::ReadStyle propertiesStyle) : TagLib::File(file) {
+
+	d = new FilePrivate;
+	if(isOpen()) {
+		read(readProperties, propertiesStyle);
+	}
 }
 
 WavPack::File::File(IOStream *stream, bool readProperties,
-                Properties::ReadStyle propertiesStyle) : TagLib::File(stream)
-{
-  d = new FilePrivate;
-  if(isOpen())
-    read(readProperties, propertiesStyle);
+		Properties::ReadStyle propertiesStyle) : TagLib::File(stream) {
+
+	d = new FilePrivate;
+	if(isOpen()) {
+		read(readProperties, propertiesStyle);
+	}
 }
 
-WavPack::File::~File()
-{
-  delete d;
+WavPack::File::~File() {
+
+	delete d;
 }
 
-TagLib::Tag *WavPack::File::tag() const
-{
-  return &d->tag;
+TagLib::Tag *WavPack::File::tag() const {
+
+	return &d->tag;
 }
 
-PropertyMap WavPack::File::properties() const
-{
-  if(d->hasAPE)
-    return d->tag.access<APE::Tag>(WavAPEIndex, false)->properties();
-  if(d->hasID3v1)
-    return d->tag.access<ID3v1::Tag>(WavID3v1Index, false)->properties();
-  return PropertyMap();
-}
+PropertyMap WavPack::File::properties() const {
 
-
-void WavPack::File::removeUnsupportedProperties(const StringList &unsupported)
-{
-  if(d->hasAPE)
-    d->tag.access<APE::Tag>(WavAPEIndex, false)->removeUnsupportedProperties(unsupported);
+	if(d->hasAPE) {
+		return d->tag.access<APE::Tag>(WavAPEIndex, false)->properties();
+	}
+	if(d->hasID3v1) {
+		return d->tag.access<ID3v1::Tag>(WavID3v1Index, false)->properties();
+	}
+	return PropertyMap();
 }
 
 
-PropertyMap WavPack::File::setProperties(const PropertyMap &properties)
-{
-  if(d->hasID3v1)
-    d->tag.access<ID3v1::Tag>(WavID3v1Index, false)->setProperties(properties);
-  return d->tag.access<APE::Tag>(WavAPEIndex, true)->setProperties(properties);
+void WavPack::File::removeUnsupportedProperties(const StringList &unsupported) {
+
+	if(d->hasAPE) {
+		d->tag.access<APE::Tag>(WavAPEIndex, false)->removeUnsupportedProperties(unsupported);
+	}
 }
 
-WavPack::Properties *WavPack::File::audioProperties() const
-{
-  return d->properties;
+
+PropertyMap WavPack::File::setProperties(const PropertyMap &properties) {
+
+	if(d->hasID3v1) {
+		d->tag.access<ID3v1::Tag>(WavID3v1Index, false)->setProperties(properties);
+	}
+	return d->tag.access<APE::Tag>(WavAPEIndex, true)->setProperties(properties);
 }
 
-bool WavPack::File::save()
-{
-  if(readOnly()) {
-    debug("WavPack::File::save() -- File is read only.");
-    return false;
-  }
+WavPack::Properties *WavPack::File::audioProperties() const {
 
-  // Update ID3v1 tag
-
-  if(ID3v1Tag()) {
-    if(d->hasID3v1) {
-      seek(d->ID3v1Location);
-      writeBlock(ID3v1Tag()->render());
-    }
-    else {
-      seek(0, End);
-      d->ID3v1Location = tell();
-      writeBlock(ID3v1Tag()->render());
-      d->hasID3v1 = true;
-    }
-  }
-  else {
-    if(d->hasID3v1) {
-      removeBlock(d->ID3v1Location, 128);
-      d->hasID3v1 = false;
-      if(d->hasAPE) {
-        if(d->APELocation > d->ID3v1Location)
-          d->APELocation -= 128;
-      }
-    }
-  }
-
-  // Update APE tag
-
-  if(APETag()) {
-    if(d->hasAPE)
-      insert(APETag()->render(), d->APELocation, d->APESize);
-    else {
-      if(d->hasID3v1)  {
-        insert(APETag()->render(), d->ID3v1Location, 0);
-        d->APESize = APETag()->footer()->completeTagSize();
-        d->hasAPE = true;
-        d->APELocation = d->ID3v1Location;
-        d->ID3v1Location += d->APESize;
-      }
-      else {
-        seek(0, End);
-        d->APELocation = tell();
-        writeBlock(APETag()->render());
-        d->APESize = APETag()->footer()->completeTagSize();
-        d->hasAPE = true;
-      }
-    }
-  }
-  else {
-    if(d->hasAPE) {
-      removeBlock(d->APELocation, d->APESize);
-      d->hasAPE = false;
-      if(d->hasID3v1) {
-        if(d->ID3v1Location > d->APELocation) {
-          d->ID3v1Location -= d->APESize;
-        }
-      }
-    }
-  }
-
-   return true;
+	return d->properties;
 }
 
-ID3v1::Tag *WavPack::File::ID3v1Tag(bool create)
-{
-  return d->tag.access<ID3v1::Tag>(WavID3v1Index, create);
+bool WavPack::File::save() {
+
+	if(readOnly()) {
+		debug("WavPack::File::save() -- File is read only.");
+		return false;
+	}
+
+	// Update ID3v1 tag
+
+	if(ID3v1Tag()) {
+		if(d->hasID3v1) {
+			seek(d->ID3v1Location);
+			writeBlock(ID3v1Tag()->render());
+		}
+		else {
+			seek(0, End);
+			d->ID3v1Location = tell();
+			writeBlock(ID3v1Tag()->render());
+			d->hasID3v1 = true;
+		}
+	}
+	else {
+		if(d->hasID3v1) {
+			removeBlock(d->ID3v1Location, 128);
+			d->hasID3v1 = false;
+			if(d->hasAPE) {
+				if(d->APELocation > d->ID3v1Location) {
+					d->APELocation -= 128;
+				}
+			}
+		}
+	}
+
+	// Update APE tag
+
+	if(APETag()) {
+		if(d->hasAPE) {
+			insert(APETag()->render(), d->APELocation, d->APESize);
+		}
+		else {
+			if(d->hasID3v1) {
+				insert(APETag()->render(), d->ID3v1Location, 0);
+				d->APESize = APETag()->footer()->completeTagSize();
+				d->hasAPE = true;
+				d->APELocation = d->ID3v1Location;
+				d->ID3v1Location += d->APESize;
+			}
+			else {
+				seek(0, End);
+				d->APELocation = tell();
+				writeBlock(APETag()->render());
+				d->APESize = APETag()->footer()->completeTagSize();
+				d->hasAPE = true;
+			}
+		}
+	}
+	else {
+		if(d->hasAPE) {
+			removeBlock(d->APELocation, d->APESize);
+			d->hasAPE = false;
+			if(d->hasID3v1) {
+				if(d->ID3v1Location > d->APELocation) {
+					d->ID3v1Location -= d->APESize;
+				}
+			}
+		}
+	}
+
+	return true;
 }
 
-APE::Tag *WavPack::File::APETag(bool create)
-{
-  return d->tag.access<APE::Tag>(WavAPEIndex, create);
+ID3v1::Tag *WavPack::File::ID3v1Tag(bool create) {
+
+	return d->tag.access<ID3v1::Tag>(WavID3v1Index, create);
 }
 
-void WavPack::File::strip(int tags)
-{
-  if(tags & ID3v1) {
-    d->tag.set(WavID3v1Index, 0);
-    APETag(true);
-  }
+APE::Tag *WavPack::File::APETag(bool create) {
 
-  if(tags & APE) {
-    d->tag.set(WavAPEIndex, 0);
-
-    if(!ID3v1Tag())
-      APETag(true);
-  }
+	return d->tag.access<APE::Tag>(WavAPEIndex, create);
 }
 
-bool WavPack::File::hasID3v1Tag() const
-{
-  return d->hasID3v1;
+void WavPack::File::strip(int tags) {
+
+	if(tags & ID3v1) {
+		d->tag.set(WavID3v1Index, 0);
+		APETag(true);
+	}
+
+	if(tags & APE) {
+		d->tag.set(WavAPEIndex, 0);
+
+		if(!ID3v1Tag()) {
+			APETag(true);
+		}
+	}
 }
 
-bool WavPack::File::hasAPETag() const
-{
-  return d->hasAPE;
+bool WavPack::File::hasID3v1Tag() const {
+
+	return d->hasID3v1;
+}
+
+bool WavPack::File::hasAPETag() const {
+
+	return d->hasAPE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // private members
 ////////////////////////////////////////////////////////////////////////////////
 
-void WavPack::File::read(bool readProperties, Properties::ReadStyle /* propertiesStyle */)
-{
-  // Look for an ID3v1 tag
+void WavPack::File::read(bool readProperties, Properties::ReadStyle /* propertiesStyle */) {
+	// Look for an ID3v1 tag
 
-  d->ID3v1Location = findID3v1();
+	d->ID3v1Location = findID3v1();
 
-  if(d->ID3v1Location >= 0) {
-    d->tag.set(WavID3v1Index, new ID3v1::Tag(this, d->ID3v1Location));
-    d->hasID3v1 = true;
-  }
+	if(d->ID3v1Location >= 0) {
+		d->tag.set(WavID3v1Index, new ID3v1::Tag(this, d->ID3v1Location));
+		d->hasID3v1 = true;
+	}
 
-  // Look for an APE tag
+	// Look for an APE tag
 
-  d->APELocation = findAPE();
+	d->APELocation = findAPE();
 
-  if(d->APELocation >= 0) {
-    d->tag.set(WavAPEIndex, new APE::Tag(this, d->APELocation));
-    d->APESize = APETag()->footer()->completeTagSize();
-    d->APELocation = d->APELocation + APETag()->footer()->size() - d->APESize;
-    d->hasAPE = true;
-  }
+	if(d->APELocation >= 0) {
+		d->tag.set(WavAPEIndex, new APE::Tag(this, d->APELocation));
+		d->APESize = APETag()->footer()->completeTagSize();
+		d->APELocation = d->APELocation + APETag()->footer()->size() - d->APESize;
+		d->hasAPE = true;
+	}
 
-  if(!d->hasID3v1)
-    APETag(true);
+	if(!d->hasID3v1) {
+		APETag(true);
+	}
 
-  // Look for WavPack audio properties
+	// Look for WavPack audio properties
 
-  if(readProperties) {
-    seek(0);
-    d->properties = new Properties(this, length() - d->APESize);
-  }
+	if(readProperties) {
+		seek(0);
+		d->properties = new Properties(this, length() - d->APESize);
+	}
 }
 
-long WavPack::File::findAPE()
-{
-  if(!isValid())
-    return -1;
+long WavPack::File::findAPE() {
 
-  if(d->hasID3v1)
-    seek(-160, End);
-  else
-    seek(-32, End);
+	if(!isValid()) {
+		return -1;
+	}
 
-  long p = tell();
+	if(d->hasID3v1) {
+		seek(-160, End);
+	}
+	else {
+		seek(-32, End);
+	}
 
-  if(readBlock(8) == APE::Tag::fileIdentifier())
-    return p;
+	long p = tell();
 
-  return -1;
+	if(readBlock(8) == APE::Tag::fileIdentifier()) {
+		return p;
+	}
+
+	return -1;
 }
 
-long WavPack::File::findID3v1()
-{
-  if(!isValid())
-    return -1;
+long WavPack::File::findID3v1() {
 
-  seek(-128, End);
-  long p = tell();
+	if(!isValid()) {
+		return -1;
+	}
 
-  if(readBlock(3) == ID3v1::Tag::fileIdentifier())
-    return p;
+	seek(-128, End);
+	long p = tell();
 
-  return -1;
+	if(readBlock(3) == ID3v1::Tag::fileIdentifier()) {
+		return p;
+	}
+
+	return -1;
 }
